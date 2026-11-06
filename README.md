@@ -1,51 +1,91 @@
-# 💻 AMDRyzer v4.2 - Universal Hardware Diagnostic Suite
+# AMDRyzer
 
-AMDRyzer is a low-level hardware profiling and diagnostic utility written entirely in pure x64 assembly. Originally targeted exclusively at AMD platforms on Linux, v4.2 is a major architectural overhaul that introduces universal auto-detection for Intel/AMD microarchitectures and native support for both Windows and Linux environments. 🌍
+Low-level x86-64 hardware profiling and diagnostic suite written entirely in standalone assembly (NASM). 
 
-This tool bypasses standard high-level libraries (like glibc or the MSVC runtime) to interact directly with the operating system kernels via raw system calls (Linux) and core Win32 APIs (Windows). ⚙️
+AMDRyzer operates without high-level runtime libraries (no glibc, no MSVCRT), interfacing directly with operating system kernels via raw Linux system calls and core Win32 system APIs. It is designed for low-level systems engineers, hardware researchers, and reverse engineers who require bare-metal execution and cycle-accurate telemetry.
 
-## ⚡ Core Features
+---
 
-* 🔍 Microarchitecture Identification: Directly queries CPU registers via CPUID (with strict ABI-compliant stack and register preservation) to map vendor (GenuineIntel / AuthenticAMD), brand strings, logical core counts, and L2/L3 cache topologies.
-*  Cross-Platform AVX2 Benchmarking: Allocates 256MB of physical RAM via sys_mmap (Linux) or VirtualAlloc (Windows). Bombards the memory with 4-pass, 256-bit wide alternating bit patterns (0xFF, 0x00, 0x55, 0xAA) using vpbroadcastd.
-*  Hardware Latency Profiling: Utilizes serialized lfence and rdtsc instructions to measure the exact CPU clock cycle latency of the memory stress test.
-*  Bare-Metal Block Access: Bypasses the filesystem to attempt raw Sector 0 reads of /dev/sda (Linux) or \\.\PhysicalDrive0 (Windows) to validate the Master Boot Record (MBR) 0xAA55 hex signature.
-*  Automated Fine-Tuning Guide: Dynamically generates and writes a local text file (AMDRyzer_Tuning_Guide.txt) containing advanced BIOS and hardware optimization tips for modern Ryzen processors.
+## Technical Architecture
 
-## 🚨 Prerequisites
+* **Direct Microarchitecture Probing**: Queries hardware CPU registers directly using `CPUID` with strict register preservation to retrieve vendor identification (`GenuineIntel` / `AuthenticAMD`), brand strings, logical core counts, and cache hierarchy topologies.
+* **AVX2 Vector Memory Stressing**: Allocates 256MB of physical RAM via `sys_mmap` (Linux) or `VirtualAlloc` (Windows), executing a 4-pass, 256-bit wide alternating pattern sweep (`0xFF`, `0x00`, `0x55`, `0xAA`) using `vpbroadcastd`.
+* **Hardware Latency Profiling**: Utilizes serialized `lfence` and `rdtsc` instruction pairs to measure exact CPU clock cycle duration across memory load operations.
+* **Raw Block Device Access**: Bypasses the filesystem layer to perform raw Sector 0 reads on primary block devices (`/dev/sda` on Linux, `\\.\PhysicalDrive0` on Windows) to validate the Master Boot Record (MBR) `0xAA55` signature.
+* **Kernel & Sysfs Telemetry**: Under Linux, queries thermal and processor frequency sysfs interfaces (`/sys/class/thermal/`, `/sys/devices/system/cpu/`) directly.
 
-* 🖥️ Host OS: Windows 10/11 (x64) or Linux (x86_64)
-* 🔨 Assembler: NASM (Netwide Assembler)
-* 🔗 Linkers: Microsoft Visual Studio Linker (link.exe) for Windows, ld for Linux
-* 🐍 Launcher: Python 3.x
-* 🔑 Permissions: Root / Administrator privileges are required only for Option 3 (Boot Sector Analysis).
+---
 
-## 🛠️ Building from Source
+## Repository Structure
 
-Because AMDRyzer interfaces directly with each operating system's specific Application Binary Interface (ABI), you must compile the respective binary for your target OS. 🏗️
+```
+AMDRyzer/
+├── AMDRyzer.asm        # Linux implementation (Raw x86-64 syscalls, no libc)
+├── AMDRyzer_win.asm    # Windows implementation (Win64 ABI, kernel32 linkage)
+├── Makefile            # Linux build automation
+├── build.bat           # Windows MSVC / NASM build script
+├── LICENSE             # MIT License
+└── README.md
+```
 
-Windows Build Instructions:
-Open the x64 Native Tools Command Prompt for VS and run:
+---
+
+## Building from Source
+
+### Prerequisites
+
+* **Assembler**: [NASM](https://www.nasm.us/) (Netwide Assembler)
+* **Linux Linker**: GNU `ld` (binutils)
+* **Windows Linker**: Microsoft Visual Studio Linker (`link.exe`) from the x64 Native Tools Command Prompt
+
+### Linux Build
+
+Using `make`:
+```bash
+make
+```
+
+Or manually:
+```bash
+nasm -f elf64 AMDRyzer.asm -o AMDRyzer.o
+ld AMDRyzer.o -o AMDRyzer
+```
+
+Run the binary:
+```bash
+./AMDRyzer
+```
+
+*Note: Option 3 (Sector 0 Boot Signature Analysis) requires root privileges (`sudo ./AMDRyzer`) to read raw block devices.*
+
+### Windows Build
+
+Using `build.bat` (from the **x64 Native Tools Command Prompt for VS**):
+```cmd
+build.bat
+```
+
+Or manually:
+```cmd
 nasm -f win64 AMDRyzer_win.asm -o AMDRyzer_win.obj
-link.exe /subsystem:console /entry:main AMDRyzer_win.obj kernel32.lib
+link.exe /nologo /subsystem:console /entry:main AMDRyzer_win.obj kernel32.lib /out:AMDRyzer_win.exe
+```
 
-Linux Build Instructions:
-Open your terminal and run:
-nasm -f elf64 AMDRyzer_linux.asm -o AMDRyzer_linux.o
-ld AMDRyzer_linux.o -o AMDRyzer_linux
+Run the executable:
+```cmd
+.\AMDRyzer_win.exe
+```
 
-## 🚀 Usage
+*Note: Raw disk reads on Windows (`\\.\PhysicalDrive0`) require running the terminal as Administrator.*
 
-Ensure your compiled binaries and launcher.py are in the same directory. Run the launcher script, which will automatically detect your host OS and boot the correct native assembly executable. 
+---
 
-python launcher.py
+## Safety and Operational Scope
 
-Note: To successfully analyze Sector 0 of your primary storage drive, you must run the launcher with elevated privileges (sudo on Linux, or from an Administrator command prompt on Windows), otherwise the kernel will block raw disk access. 
+AMDRyzer is strictly a read-only diagnostic and telemetry utility. It allocates memory exclusively within its own process space and issues read-only requests to block storage. It does not write to the boot sector, modify CPU voltage/frequency states, or alter persistent system configuration.
 
-## ⚠️ Safety & Scope
+---
 
-AMDRyzer v4.2 is a strictly diagnostic tool. It allocates its own isolated memory for testing and only performs read operations on system block devices. The only disk write operation it performs is creating the tuning guide text file in its local directory. It will not write to your boot sector, alter your CPU power states, or permanently modify system parameters. 
+## License
 
-## Author
-
-Ryan Osacra 
+MIT License. See [LICENSE](LICENSE) for details.
