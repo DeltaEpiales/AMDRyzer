@@ -1,0 +1,8 @@
+# Binaries & Objects
+*.obj
+*.o
+*.exe
+AMDRyzer
+
+# Generated reports
+AMDRyzer_Tuning_Guide.txt

@@ -4,13 +4,11 @@ default rel
 ; Compiles with NASM and MSVC Linker
 
 extern GetStdHandle
-extern WriteConsoleA
-extern ReadConsoleA
+extern ReadFile
+extern WriteFile
 extern VirtualAlloc
 extern VirtualFree
 extern CreateFileA
-extern ReadFile
-extern WriteFile
 extern CloseHandle
 extern ExitProcess
 
@@ -31,6 +29,7 @@ section .data
     msg_cores         db "[+] Logical Cores Detected: ", 0
     msg_l2_cache      db "[+] L2 Cache Size (KB): ", 0
     msg_l3_cache      db "[+] L3 Cache Size (MB): ", 0
+    msg_intel_cache   db "[*] Cache Topology: AMD Extended Leaf 0x80000006 (Intel uses Leaf 0x04)", 0Dh, 0Ah, 0
     
     msg_avx2_pass     db "[+] AVX2 Instructions: Supported", 0Dh, 0Ah, 0
     msg_avx2_fail     db "[-] AVX2 Instructions: NOT Supported", 0Dh, 0Ah, 0
@@ -113,16 +112,36 @@ main:
     lea rcx, [rel menu_header]
     call print_string
 
-    ; ReadConsoleA
+    ; ReadFile from STDIN
     mov rcx, [rel hStdIn]
     lea rdx, [rel input_buf]
     mov r8, 16
     lea r9, [rel chars_rw]
     mov qword [rsp+32], 0
-    call ReadConsoleA
+    call ReadFile
 
-    mov al, [rel input_buf]
-    
+    ; If ReadFile fails or returns 0 bytes (EOF or closed pipe), exit cleanly
+    test eax, eax
+    jz .exit
+    cmp qword [rel chars_rw], 0
+    jz .exit
+
+    ; Scan input_buf for first valid choice ('1' through '5')
+    lea rsi, [rel input_buf]
+    mov rcx, [rel chars_rw]
+.find_char:
+    mov al, [rsi]
+    cmp al, '1'
+    jb .next_c
+    cmp al, '5'
+    jbe .handle_choice
+.next_c:
+    inc rsi
+    dec rcx
+    jnz .find_char
+    jmp .main_loop
+
+.handle_choice:
     cmp al, '1'
     je .cmd_diag
     cmp al, '2'
@@ -218,6 +237,11 @@ main:
 
 .do_cache:
     mov [rsp+80], rbx
+    
+    ; Check if AMD ("AuthenticAMD")
+    cmp dword [rel vendor_id], 0x68747541 ; "Auth"
+    jne .intel_cache_note
+
     mov eax, 0x80000006
     cpuid
     
@@ -246,6 +270,12 @@ main:
     mov rcx, [rsp+96]
     call print_number
     lea rcx, [rel newline]
+    call print_string
+    jmp .do_avx_check
+
+.intel_cache_note:
+    mov rbx, [rsp+80]
+    lea rcx, [rel msg_intel_cache]
     call print_string
 
 .do_avx_check:
@@ -474,7 +504,7 @@ print_string:
     mov rcx, [rel hStdOut]
     lea r9, [rel chars_rw]
     mov qword [rsp+32], 0
-    call WriteConsoleA
+    call WriteFile
     
     mov rbx, [rsp+48]
     mov rdi, [rsp+56]

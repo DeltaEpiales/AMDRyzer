@@ -20,3 +20,4 @@ clean:
 	rm -f $(OBJ) $(BIN) AMDRyzer_Tuning_Guide.txt
 
 .PHONY: all clean
+
